@@ -1,0 +1,222 @@
+const canvas = document.getElementById('particleCanvas');
+const ctx = canvas.getContext('2d');
+
+let dpr = window.devicePixelRatio || 1;
+let lastWidth = window.innerWidth;
+
+function setupCanvas() {
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.scale(dpr, dpr);
+}
+
+setupCanvas();
+
+let particles = [];
+const mouse = { x: null, y: null, radius: 100 };
+
+window.addEventListener('mousemove', (event) => {
+    mouse.x = event.x;
+    mouse.y = event.y;
+});
+
+window.addEventListener('mouseout', () => {
+    mouse.x = null;
+    mouse.y = null;
+});
+
+
+window.addEventListener('touchstart', (event) => {
+
+    mouse.x = event.touches[0].clientX;
+    mouse.y = event.touches[0].clientY;
+});
+
+window.addEventListener('touchmove', (event) => {
+    mouse.x = event.touches[0].clientX;
+    mouse.y = event.touches[0].clientY;
+});
+
+window.addEventListener('touchend', () => {
+    mouse.x = null;
+    mouse.y = null;
+});
+
+
+function getTextPoints(text) {
+    const offCanvas = document.createElement('canvas');
+    const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+
+    offCanvas.width = window.innerWidth;
+    offCanvas.height = window.innerHeight;
+
+    offCtx.fillStyle = 'white';
+    let fontSize = Math.min(window.innerWidth * 0.1, 90);
+    if (window.innerWidth < 600) fontSize = Math.max(fontSize, 50);
+    offCtx.font = `bold ${fontSize}px "Arial", sans-serif`;
+
+    offCtx.textAlign = 'center';
+    offCtx.textBaseline = 'middle';
+
+    offCtx.fillText(text, window.innerWidth / 2, window.innerHeight / 2);
+
+    const pixels = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height).data;
+    const points = [];
+
+
+    const gap = (window.innerWidth < 600) ? 1.5 : 3;
+
+    for (let y = 0; y < offCanvas.height; y += gap) {
+        for (let x = 0; x < offCanvas.width; x += gap) {
+            const index = (Math.floor(y) * offCanvas.width + Math.floor(x)) * 4;
+            const alpha = pixels[index + 3];
+
+            if (alpha > 128) {
+                points.push({ x: x, y: y });
+            }
+        }
+    }
+    return points;
+}
+
+class Particle {
+    constructor(targetX, targetY) {
+        this.targetX = targetX;
+        this.targetY = targetY;
+
+
+        this.x = Math.random() * window.innerWidth;
+        this.y = Math.random() * window.innerHeight;
+        this.size = Math.random() * 0.7 + 0.4;
+
+
+        this.vx = (Math.random() - 0.5) * 2;
+        this.vy = (Math.random() - 0.5) * 2;
+
+        this.active = false;
+        this.framesSinceLeft = 0;
+
+
+        this.alpha = Math.random() * Math.PI * 2;
+        this.twinkleSpeed = 0.01047;
+    }
+
+    draw() {
+
+        const baseOpacity = Math.abs(Math.sin(this.alpha));
+        const opacity = 0.1 + Math.pow(baseOpacity, 4) * 0.9;
+        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    update() {
+
+        this.alpha += this.twinkleSpeed;
+
+        let distanceToMouse = 9999;
+
+        if (mouse.x !== null && mouse.y !== null) {
+
+            let dx = mouse.x - this.targetX;
+            let dy = mouse.y - this.targetY;
+            distanceToMouse = Math.sqrt(dx * dx + dy * dy);
+        }
+
+
+        if (distanceToMouse < mouse.radius) {
+            this.active = true;
+            this.framesSinceLeft = 0;
+        } else {
+
+            if (this.active) {
+                this.framesSinceLeft++;
+                if (this.framesSinceLeft > 30000) {
+                    this.active = false;
+                    this.framesSinceLeft = 0;
+                }
+            }
+        }
+
+        if (this.active) {
+
+            let time = Date.now() * 0.002;
+            let breathingX = Math.sin(time + (this.targetX * 0.01)) * 1.5;
+            let breathingY = Math.cos(time + (this.targetY * 0.01)) * 1.5;
+
+
+            let tx = (this.targetX + breathingX) - this.x;
+            let ty = (this.targetY + breathingY) - this.y;
+
+            this.vx += tx * 0.05;
+            this.vy += ty * 0.05;
+            this.vx *= 0.8;
+            this.vy *= 0.8;
+
+            this.x += this.vx;
+            this.y += this.vy;
+        } else {
+
+            this.vx += (Math.random() - 0.5) * 0.05;
+            this.vy += (Math.random() - 0.5) * 0.05;
+
+
+            let speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+            if (speed > 0.6) {
+                this.vx = (this.vx / speed) * 0.6;
+                this.vy = (this.vy / speed) * 0.6;
+            }
+
+            this.x += this.vx;
+            this.y += this.vy;
+
+
+            if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+            if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+        }
+    }
+}
+
+function init() {
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    particles = [];
+    const textPoints = getTextPoints("Yusuf Emir");
+    textPoints.forEach(p => {
+        particles.push(new Particle(p.x, p.y));
+    });
+}
+
+function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < particles.length; i++) {
+        particles[i].draw();
+        particles[i].update();
+    }
+    requestAnimationFrame(animate);
+}
+
+init();
+animate();
+
+
+let resizeTimer;
+window.addEventListener('resize', () => {
+
+
+    if (Math.abs(window.innerWidth - lastWidth) < 10) return;
+
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+        lastWidth = window.innerWidth;
+        setupCanvas();
+        init();
+    }, 200);
+});
